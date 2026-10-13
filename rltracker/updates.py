@@ -74,3 +74,37 @@ def download(url: str, progress=None, dest: Path | None = None) -> Path:
         raise OSError("Download unvollständig – bitte erneut versuchen")
     os.replace(tmp, dest)
     return dest
+
+
+MANDATORY_MARK = "[wichtig]"
+
+
+def is_mandatory(notes: str) -> bool:
+    """Steht [wichtig] im Release-Text, muss das Update installiert werden."""
+    return MANDATORY_MARK in (notes or "").lower()
+
+
+def notes_html(notes: str, limit: int = 3000) -> str:
+    """Release-Text (Markdown-light) als einfaches, sicheres HTML fuer das Update-Fenster."""
+    import html
+    text = re.sub(re.escape(MANDATORY_MARK), "", notes or "", flags=re.I)[:limit]
+    out, in_list = [], False
+    for raw in text.splitlines():
+        line = raw.strip()
+        m = re.match(r"^[-*]\s+(.*)", line)
+        if m:
+            if not in_list:
+                out.append("<ul style='margin:4px 0 4px -20px'>")
+                in_list = True
+            out.append(f"<li>{html.escape(m.group(1))}</li>")
+            continue
+        if in_list:
+            out.append("</ul>")
+            in_list = False
+        if line.startswith("#"):
+            out.append(f"<p><b>{html.escape(line.lstrip('#').strip())}</b></p>")
+        elif line:
+            out.append(f"<p>{html.escape(line)}</p>")
+    if in_list:
+        out.append("</ul>")
+    return "".join(out) or "<p>Fehlerbehebungen und Verbesserungen.</p>"

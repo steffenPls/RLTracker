@@ -31,7 +31,7 @@ rem --- 3. App bauen ---
 for /f %%V in ('%PYB% installer\prepare_version.py') do set VERSION=%%V
 echo [3/5] Baue die App, Version %VERSION% (1-3 Minuten) ...
 %PYB% -m PyInstaller --noconfirm --clean --windowed --name RLTracker --icon icon.ico ^
-  --version-file installer\version_info.generated.txt --collect-all subtr_actor ^
+  --version-file installer\version_info.generated.txt --collect-all subtr_actor --hidden-import mpl_toolkits.mplot3d ^
   --exclude-module tkinter --exclude-module PySide6.QtWebEngineCore --exclude-module PySide6.Qt3DCore ^
   main.py || goto :fail
 %PYB% installer\collect_licenses.py dist\RLTracker\licenses || goto :fail

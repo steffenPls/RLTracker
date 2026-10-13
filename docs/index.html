@@ -65,7 +65,7 @@
           <h3>Wo du den Ball triffst</h3>
           <p>Heatmaps aller Ballberührungen – für dich, dein Team oder alle Spieler. Auf Wunsch aus Sicht
             des eigenen Teams, damit du Matches auf beiden Seiten vergleichen kannst.</p>
-          <ul><li>Anteil in eigenem, mittlerem und gegnerischem Drittel</li><li>Luftkontakte und Schussstärke jeder Berührung</li></ul>
+          <ul><li>Anteil in eigenem, mittlerem und gegnerischem Drittel</li><li>Drehbare 3D-Ansicht und Seitenansicht: in welcher Höhe du den Ball triffst</li><li>Luftkontakte und Schussstärke jeder Berührung</li></ul>
         </div>
         <figure><img src="assets/heatmap.png" width="1320" height="726" loading="lazy" alt="Heatmap der Ballberührungen eines Spielers auf dem Spielfeld"></figure>
       </div>
@@ -213,6 +213,7 @@
   const esc = s => s.replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
   function notesToHtml(md) {
     const out = []; let list = false;
+    md = md.replace(/\[wichtig\]/ig, "");
     for (const raw of md.split(/\r?\n/)) {
       const line = raw.trim();
       const item = line.match(/^[-*]\s+(.*)/);

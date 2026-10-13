@@ -42,7 +42,7 @@ jobs:
       - name: App bauen
         run: >
           python -m PyInstaller --noconfirm --clean --windowed --name RLTracker --icon icon.ico
-          --version-file installer/version_info.generated.txt --collect-all subtr_actor
+          --version-file installer/version_info.generated.txt --collect-all subtr_actor --hidden-import mpl_toolkits.mplot3d
           --exclude-module tkinter main.py
 
       - name: Lizenzen sammeln

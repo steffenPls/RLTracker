@@ -55,6 +55,22 @@ def zone_of(y: float, team: int) -> str:
     return "mid"
 
 
+# Hoehenzonen fuer Ballberuehrungen (Ball-Radius ~93 uu, Decke 2044 uu)
+HEIGHT_ZONES = [("ground", "Boden"), ("jump", "Sprunghöhe"), ("air", "Luft"), ("high", "Hoch"), ("wall", "Wand")]
+
+
+def height_zone(x: float, y: float, z: float) -> str:
+    if (abs(x) > 3800 or abs(y) > 4900) and z > 250:
+        return "wall"
+    if z < 180:
+        return "ground"
+    if z < 450:
+        return "jump"
+    if z < 1300:
+        return "air"
+    return "high"
+
+
 def fmt_time(sec: float) -> str:
     sec = max(0, int(round(sec)))
     return f"{sec // 60}:{sec % 60:02d}"
@@ -139,6 +155,10 @@ def analyze(match: dict) -> dict:
             "demos_taken": sum(1 for d in demos if d["victim"] == k),
             "touches_recorded": len(my_t),
             "aerial_touches": sum(1 for t in loc_t if t["z"] > AERIAL_Z),
+            "avg_touch_height": _mean(t["z"] for t in loc_t) / 100.0,
+            "max_touch_height": max((t["z"] for t in loc_t), default=0) / 100.0,
+            **{f"height_{zk}": sum(1 for t in loc_t if height_zone(t["x"], t["y"], t["z"]) == zk)
+               for zk, _ in HEIGHT_ZONES},
             "avg_hit_speed": kmh(_mean(posts)),
             "max_hit_speed": kmh(max(posts) if posts else 0),
             "avg_speed_gain": kmh(_mean(gains)),

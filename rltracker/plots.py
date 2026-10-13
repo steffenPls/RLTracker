@@ -642,3 +642,249 @@ def plot_replay_compare(fig: Figure, rep: dict) -> None:
     for i, (f, t, fmt) in enumerate(metrics):
         ax = fig.add_subplot(gs[i // 3, i % 3])
         _hbars(ax, labels, [p["summary"].get(f, 0) for p in ps], colors, fmt, t)
+
+
+# ---------------------------------------------------------------- Hoehe & 3D
+import mpl_toolkits.mplot3d  # noqa: E402,F401  (registriert projection="3d"; wichtig fuer den .exe-Build)
+
+HEIGHT_RAMP = LinearSegmentedColormap.from_list("height", ["#7a5c16", "#b8891c", ACCENT, "#fff0c2"])
+HEIGHT_COLORS = {"ground": "#a9cdff", "jump": "#6aaeff", "air": "#2f8cff", "high": "#1a4f9a", "wall": "#7d8db0"}
+
+
+def _touch_points(match: dict, keys, normalize: bool):
+    players = match["players"]
+    keys = keys or list(players)
+    pts = []
+    for t in match["touches"]:
+        if t["player"] in keys and t.get("x") is not None:
+            x, y = t["x"], t["y"]
+            if normalize and t["team"] == 1:
+                x, y = -x, -y
+            pts.append((y, x, t["z"], t["player"]))
+    return keys, pts
+
+
+def _arena_3d(ax) -> None:
+    fx, fy, c, top = A.FIELD_X, A.FIELD_Y, 1152.0, A.CEILING
+    ring = [(-fy + c, -fx), (fy - c, -fx), (fy, -fx + c), (fy, fx - c), (fy - c, fx),
+            (-fy + c, fx), (-fy, fx - c), (-fy, -fx + c), (-fy + c, -fx)]
+    xs, ys = [p[0] for p in ring], [p[1] for p in ring]
+    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+    ax.computed_zorder = False  # feste Zeichenreihenfolge: Boden immer unter den Punkten
+    floor = Poly3DCollection([[(x, y, 0) for x, y in ring[:-1]]], facecolor=PITCH, edgecolor="none", alpha=0.85)
+    floor.set_zorder(0)
+    ax.add_collection3d(floor)
+    ax.plot(xs, ys, [0] * len(ring), color=PITCH_LINE, lw=1.4)
+    ax.plot(xs, ys, [top] * len(ring), color=LINE, lw=0.8, alpha=0.6)
+    for x, y in ring[:-1]:
+        ax.plot([x, x], [y, y], [0, top], color=LINE, lw=0.6, alpha=0.45)
+    ax.plot([0, 0], [-fx, fx], [0, 0], color=PITCH_LINE, lw=0.9)
+    for team, sx in ((0, -1), (1, 1)):  # Tore als Rahmen an den Stirnwaenden
+        gx = sx * fy
+        g = A.GOAL_HALF_W
+        ax.plot([gx, gx, gx, gx], [-g, -g, g, g], [0, A.GOAL_H, A.GOAL_H, 0], color=TEAM[team], lw=2)
+    ax.set_xlim(-fy, fy)
+    ax.set_ylim(-fx, fx)
+    ax.set_zlim(0, top)
+    try:
+        ax.set_box_aspect((2 * fy, 2 * fx, top * 1.6), zoom=1.02)
+    except TypeError:  # aeltere matplotlib-Versionen ohne zoom
+        ax.set_box_aspect((2 * fy, 2 * fx, top * 1.6))
+    ax.set_axis_off()
+    ax.set_facecolor(SURFACE)
+
+
+def plot_touch_3d(fig: Figure, match: dict, keys, normalize: bool = False, elev: float = 24, azim: float = -62) -> None:
+    """Drehbare 3D-Ansicht aller Ballberuehrungen, eingefaerbt nach Hoehe."""
+    fig.clear()
+    style_fig(fig)
+    keys, pts = _touch_points(match, keys, normalize)
+    ax = fig.add_axes([0.0, 0.02, 0.9, 0.9], projection="3d")
+    _arena_3d(ax)
+    ax.view_init(elev=elev, azim=azim)
+    if pts:
+        px = np.array([p[0] for p in pts])
+        py = np.array([p[1] for p in pts])
+        pz = np.array([p[2] for p in pts])
+        for x, y, z in zip(px, py, pz):  # Lot auf den Boden: macht die Hoehe ablesbar
+            ax.plot([x, x], [y, y], [0, z], color=TEXT_2, lw=0.5, alpha=0.3, zorder=2)
+        ax.scatter(px, py, np.zeros_like(pz), s=5, color=TEXT_2, alpha=0.35, depthshade=False, zorder=2)
+        order = np.argsort(pz)  # hohe Punkte zuletzt zeichnen
+        sc = ax.scatter(px[order], py[order], pz[order], c=pz[order] / 100.0, cmap=HEIGHT_RAMP, vmin=0,
+                        vmax=A.CEILING / 100.0, s=34, edgecolor=SURFACE, linewidth=0.5, depthshade=False, zorder=3)
+        cax = fig.add_axes([0.91, 0.18, 0.015, 0.6])
+        cb = fig.colorbar(sc, cax=cax)
+        cb.set_label("Höhe (m)", color=TEXT_2, fontsize=9)
+        cb.ax.tick_params(colors=TEXT_2, labelsize=8)
+        cb.outline.set_edgecolor(LINE)
+    for g in match.get("goals", []):
+        if g.get("x") is None or (keys and g["scorer"] not in keys):
+            continue
+        x, y = (g["x"], g["y"]) if not (normalize and g["team"] == 1) else (-g["x"], -g["y"])
+        ax.scatter([y], [x], [g["z"]], marker="*", s=180, color=TEAM[g["team"]], edgecolor="white",
+                   linewidth=0.8, depthshade=False, zorder=4)
+    fig.text(0.02, 0.95, "Ballberührungen in 3D", color=TEXT, fontsize=12, fontweight="bold", va="top")
+    fig.text(0.02, 0.905, f"{len(pts)} Berührungen · Farbe = Höhe · mit der Maus drehen, Mausrad zum Zoomen",
+             color=MUTED, fontsize=8.5, va="top")
+
+
+def _heat2d(ax, px, py, xedges, yedges, cmap, sigma_cells=2.5, zorder=2):
+    if len(px) == 0:
+        return
+    h, _, _ = np.histogram2d(px, py, bins=[xedges, yedges])
+    h = _gauss_blur(h, sigma_cells)
+    if h.max() <= 0:
+        return
+    im = ax.imshow((h / h.max()).T, origin="lower", extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
+                   cmap=cmap, vmin=0, vmax=1, interpolation="bilinear", aspect="auto", zorder=zorder)
+    clip = getattr(ax, "_rl_side", None)
+    if clip is not None:
+        im.set_clip_path(clip)
+
+
+def _side_frame(ax, labels: bool = True) -> None:
+    fy, top = A.FIELD_Y, A.CEILING
+    ax.set_facecolor(SURFACE)
+    room = Rectangle((-fy, 0), 2 * fy, top, facecolor=PITCH, edgecolor=PITCH_LINE, lw=1.5, zorder=0)
+    ax.add_patch(room)
+    ax._rl_side = room  # Heatmaps an den Waenden abschneiden
+    for team, sx in ((0, -1), (1, 1)):
+        ax.add_patch(Rectangle((fy if sx > 0 else -fy - A.GOAL_DEPTH, 0), A.GOAL_DEPTH, A.GOAL_H,
+                               facecolor=TEAM[team], alpha=0.25, edgecolor=TEAM[team], lw=1.5, zorder=0))
+    for zline in (180, 450, 1300):
+        ax.plot([-fy, fy], [zline, zline], color=PITCH_LINE, lw=0.7, ls=(0, (4, 4)), zorder=1)
+    if labels:  # Beschriftung mittig in der jeweiligen Zone
+        for zmid, name in ((70, "Boden"), (300, "Sprunghöhe"), (860, "Luft"), (1650, "Hoch")):
+            ax.text(-fy + 90, zmid, name, color=TEXT_2, fontsize=7.5, va="center", zorder=5)
+    ax.plot([0, 0], [0, top], color=PITCH_LINE, lw=1, zorder=1)
+    ax.set_xlim(-fy - A.GOAL_DEPTH - 60, fy + A.GOAL_DEPTH + 60)
+    ax.set_ylim(0, top + 40)
+    ax.set_xticks([])
+    yt = [0, 500, 1000, 1500, 2000]
+    ax.set_yticks(yt)
+    ax.set_yticklabels([f"{v / 100:.0f} m" for v in yt], color=TEXT_2, fontsize=8)
+    for s in ax.spines.values():
+        s.set_visible(False)
+
+
+def plot_side_view(fig: Figure, match: dict, keys, normalize: bool = False) -> None:
+    """Spielfeld von der Seite: Laenge (Tor zu Tor) gegen Hoehe."""
+    fig.clear()
+    style_fig(fig)
+    keys, pts = _touch_points(match, keys, normalize)
+    players = match["players"]
+    ax = fig.add_axes([0.07, 0.12, 0.9, 0.74])
+    _side_frame(ax)
+    if pts:
+        px = np.array([p[0] for p in pts])
+        pz = np.array([p[2] for p in pts])
+        xe = np.arange(-A.FIELD_Y - A.GOAL_DEPTH, A.FIELD_Y + A.GOAL_DEPTH + 100, 100)
+        ze = np.arange(0, A.CEILING + 50, 50)
+        teams = {players[k]["team"] for k in keys if k in players}
+        _heat2d(ax, px, pz, xe, ze, heat_cmap(teams.pop() if len(teams) == 1 else None), sigma_cells=4)
+        for i, k in enumerate(keys):
+            idx = [j for j, p in enumerate(pts) if p[3] == k]
+            if idx:
+                ax.scatter(px[idx], pz[idx], s=22, marker=PLAYER_MARKERS[i % len(PLAYER_MARKERS)],
+                           color=TEAM[players[k]["team"]], edgecolor=SURFACE, lw=0.7, zorder=4,
+                           label=players[k]["name"] if len(keys) > 1 else None)
+        if 1 < len(keys) <= 6:
+            _legend(ax, loc="upper center", bbox_to_anchor=(0.5, -0.02), ncol=len(keys))
+    left, right = ("eigenes Tor", "gegnerisches Tor") if normalize else ("Blaues Tor", "Oranges Tor")
+    ax.text(-A.FIELD_Y, -90, f"← {left}", color=TEXT_2, fontsize=8, va="top")
+    ax.text(A.FIELD_Y, -90, f"{right} →", color=TEXT_2, fontsize=8, va="top", ha="right")
+    hmax = max((p[2] for p in pts), default=0)
+    _title(ax, "Seitenansicht der Ballberührungen",
+           f"{len(pts)} Berührungen · höchste in {hmax / 100:.1f} m Höhe · Decke bei {A.CEILING / 100:.1f} m")
+
+
+def plot_height_breakdown(fig: Figure, match: dict, an: dict) -> None:
+    """Wie hoch jeder Spieler den Ball beruehrt (Anteile) und seine hoechste Beruehrung."""
+    fig.clear()
+    style_fig(fig)
+    keys = A.player_order(match)
+    ps = an["players"]
+    gs = fig.add_gridspec(1, 2, width_ratios=[2.2, 1], wspace=0.35, left=0.13, right=0.97, top=0.84, bottom=0.2)
+    ax = fig.add_subplot(gs[0])
+    style_ax(ax, grid_axis="x")
+    y = np.arange(len(keys))[::-1]
+    left = np.zeros(len(keys))
+    tot = np.array([max(1, sum(ps[k][f"height_{z}"] for z, _ in A.HEIGHT_ZONES)) for k in keys])
+    for z, lbl in A.HEIGHT_ZONES:
+        vals = np.array([ps[k][f"height_{z}"] for k in keys]) / tot * 100
+        ax.barh(y, vals, left=left, color=HEIGHT_COLORS[z], height=0.6, label=lbl, edgecolor=SURFACE, lw=2)
+        for yi, l, v in zip(y, left, vals):
+            if v >= 10:
+                ax.text(l + v / 2, yi, f"{v:.0f}%", ha="center", va="center", fontsize=8,
+                        color=SURFACE if z in ("ground", "jump") else TEXT)
+        left += vals
+    ax.set_yticks(y)
+    ax.set_yticklabels([ps[k]["name"] for k in keys], fontsize=9)
+    for lab, k in zip(ax.get_yticklabels(), keys):
+        lab.set_color(TEAM[ps[k]["team"]])
+    ax.set_xlim(0, 100)
+    ax.set_xlabel("% der Ballberührungen")
+    _legend(ax, loc="upper center", bbox_to_anchor=(0.5, -0.14), ncol=5)
+    _title(ax, "In welcher Höhe wird der Ball berührt",
+           "Boden < 1,8 m · Sprunghöhe < 4,5 m · Luft < 13 m · darüber hoch")
+    ax2 = fig.add_subplot(gs[1])
+    _hbars(ax2, [ps[k]["name"] for k in keys], [ps[k]["max_touch_height"] for k in keys],
+           [TEAM[ps[k]["team"]] for k in keys], "{:.1f} m", "Höchste Berührung")
+
+
+# ---------------------------------------------------------------- Replay: Hoehe
+
+REPLAY_HEIGHTS = [("hz_ground", "Boden", "#a9cdff"), ("hz_low", "bis 3 m", "#6aaeff"),
+                  ("hz_mid", "3–10 m", "#2f8cff"), ("hz_high", "über 10 m", "#1a4f9a"),
+                  ("hz_wall", "Wand", "#7d8db0")]
+
+
+def plot_replay_side(fig: Figure, rep: dict, idx, normalize: bool = True) -> None:
+    """Seitenansicht der kompletten Fahr- und Flugwege aus dem Replay."""
+    fig.clear()
+    style_fig(fig)
+    ax = fig.add_axes([0.07, 0.1, 0.9, 0.76])
+    _side_frame(ax)
+    xe = np.arange(-A.FIELD_Y - A.GOAL_DEPTH, A.FIELD_Y + A.GOAL_DEPTH + 100, 100)
+    ze = np.arange(0, A.CEILING + 50, 50)
+    if idx in (None, "ball"):
+        b = rep["ball"]
+        _heat2d(ax, b[:, 1], b[:, 2], xe, ze, HEAT_NEUTRAL, sigma_cells=3)
+        _title(ax, "Ball von der Seite", "Wo und wie hoch der Ball das ganze Match über war")
+        return
+    p = rep["players"][idx]
+    pos = p["pos"][p["valid"]]
+    y, z = pos[:, 1], pos[:, 2]
+    if normalize and p["team"] == 1:
+        y = -y
+    _heat2d(ax, y, z, xe, ze, heat_cmap(p["team"]), sigma_cells=3)
+    s = p["summary"]
+    _title(ax, f"Fahr- und Flugwege von der Seite – {p['name']}",
+           f"Ø Höhe {s.get('avg_height', 0):.1f} m · höchster Punkt {s.get('max_height', 0):.1f} m · "
+           f"{s.get('air_pct', 0):.0f} % der Zeit in der Luft")
+
+
+def plot_replay_heights(fig: Figure, rep: dict) -> None:
+    fig.clear()
+    style_fig(fig)
+    ps = rep["players"]
+    ax = fig.add_axes([0.16, 0.2, 0.8, 0.64])
+    style_ax(ax, grid_axis="x")
+    y = np.arange(len(ps))[::-1]
+    left = np.zeros(len(ps))
+    for f, lbl, col in REPLAY_HEIGHTS:
+        vals = np.array([p["summary"].get(f, 0) for p in ps])
+        ax.barh(y, vals, left=left, color=col, height=0.6, label=lbl, edgecolor=SURFACE, lw=2)
+        for yi, l, v in zip(y, left, vals):
+            if v >= 8:
+                ax.text(l + v / 2, yi, f"{v:.0f}%", ha="center", va="center", fontsize=8,
+                        color=SURFACE if f in ("hz_ground", "hz_low") else TEXT)
+        left += vals
+    ax.set_yticks(y)
+    ax.set_yticklabels([p["name"] for p in ps], fontsize=9)
+    for lab, p in zip(ax.get_yticklabels(), ps):
+        lab.set_color(TEAM[p["team"]])
+    ax.set_xlim(0, 100)
+    ax.set_xlabel("% der Spielzeit")
+    _legend(ax, loc="upper center", bbox_to_anchor=(0.5, -0.13), ncol=5)
+    _title(ax, "Wie viel Zeit jeder Spieler auf welcher Höhe verbringt", "aus den Replay-Positionen")

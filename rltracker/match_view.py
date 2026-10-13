@@ -26,6 +26,9 @@ DETAIL_LABELS = {
     "shooting_pct": "Trefferquote (%)", "touches": "Ballkontakte (Spiel)", "car_touches": "Auto-Kontakte",
     "touches_recorded": "Aufgezeichnete Kontakte", "aerial_touches": "Luftkontakte (>3 m)",
     "touches_def": "Kontakte eigenes Drittel", "touches_mid": "Kontakte Mitte", "touches_off": "Kontakte gegn. Drittel",
+    "avg_touch_height": "Ø Höhe der Ballkontakte (m)", "max_touch_height": "Höchste Ballberührung (m)",
+    "height_ground": "Kontakte am Boden", "height_jump": "Kontakte in Sprunghöhe", "height_air": "Kontakte in der Luft",
+    "height_high": "Kontakte hoch / an der Decke", "height_wall": "Kontakte an der Wand",
     "avg_hit_speed": "Ø Ballgeschw. nach Kontakt (km/h)", "max_hit_speed": "Härtester Schuss (km/h)",
     "avg_speed_gain": "Ø Tempo-Zuwachs pro Kontakt (km/h)", "goal_speed_avg": "Ø Torgeschwindigkeit (km/h)",
     "goal_speed_max": "Schnellstes Tor (km/h)", "demos": "Demos verteilt", "demos_taken": "Selbst demoliert",
@@ -194,6 +197,28 @@ class MatchView(QWidget):
         self.cv_phys = Canvas()
         self.tabs.addTab(self.cv_phys, "Bewegung")
 
+        # 10 Hoehe & 3D --------------------------------------------------------
+        h3 = QWidget()
+        h3l = QVBoxLayout(h3)
+        bar = QHBoxLayout()
+        self.h3_who = QComboBox()
+        self.h3_view = QComboBox()
+        self.h3_view.addItems(["3D-Ansicht (drehbar)", "Seitenansicht", "Höhenverteilung"])
+        self.h3_norm = QCheckBox("Aus Sicht des eigenen Teams")
+        for w in (QLabel("Ansicht:"), self.h3_view, QLabel("Spieler:"), self.h3_who, self.h3_norm):
+            bar.addWidget(w)
+        bar.addStretch()
+        h3l.addLayout(bar)
+        self.cv_height = Canvas()
+        h3l.addWidget(self.cv_height, 1)
+        self.h3_hint = QLabel("Tipp: In der 3D-Ansicht mit gedrückter linker Maustaste drehen, mit der rechten zoomen.")
+        self.h3_hint.setObjectName("muted")
+        h3l.addWidget(self.h3_hint)
+        self.h3_who.currentIndexChanged.connect(lambda: self._redraw(10))
+        self.h3_view.currentIndexChanged.connect(lambda: self._redraw(10))
+        self.h3_norm.toggled.connect(lambda: self._redraw(10))
+        self.tabs.addTab(h3, "Höhe & 3D")
+
         # 10 Ereignisse --------------------------------------------------------
         self.events = make_table(["Zeit", "Ereignis", "Spieler", "Details"])
         self.tabs.addTab(self.events, "Ereignisse")
@@ -243,7 +268,8 @@ class MatchView(QWidget):
         keys = A.player_order(self.match)
         ps = self.match["players"]
         lk = self._local_key()
-        for combo, with_groups in ((self.hm_who, True), (self.bo_who, True), (self.pl_who, False)):
+        for combo, with_groups in ((self.hm_who, True), (self.bo_who, True), (self.pl_who, False),
+                                   (self.h3_who, True)):
             combo.blockSignals(True)
             combo.clear()
             if with_groups:
@@ -388,6 +414,17 @@ class MatchView(QWidget):
             self.cv_hits.draw(P.plot_hit_speeds, m)
         elif idx == 9:
             self.cv_phys.draw(P.plot_physics, m, an)
+        elif idx == 10:
+            view = self.h3_view.currentIndex()
+            self.h3_who.setEnabled(view != 2)
+            self.h3_norm.setEnabled(view != 2)
+            self.h3_hint.setVisible(view == 0)
+            if view == 0:
+                self.cv_height.draw(P.plot_touch_3d, m, self.h3_who.currentData(), self.h3_norm.isChecked())
+            elif view == 1:
+                self.cv_height.draw(P.plot_side_view, m, self.h3_who.currentData(), self.h3_norm.isChecked())
+            else:
+                self.cv_height.draw(P.plot_height_breakdown, m, an)
 
     def _current_canvas(self):
         w = self.tabs.currentWidget()

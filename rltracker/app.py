@@ -84,6 +84,57 @@ class AboutDialog(QDialog):
         lay.addLayout(row)
 
 
+class UpdateDialog(QDialog):
+    """Erscheint beim Start, wenn es eine neue Version gibt."""
+
+    def __init__(self, rel: dict, parent=None):
+        super().__init__(parent)
+        self.mandatory = updates.is_mandatory(rel.get("notes", ""))
+        self.setWindowTitle("Neue Version verfügbar")
+        self.setMinimumWidth(520)
+        self.setStyleSheet(f"QDialog {{ background: {P.SURFACE_2}; }}")
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(24, 22, 24, 18)
+        lay.setSpacing(10)
+        t = QLabel(f"Version {rel['version']} ist da")
+        t.setFont(display_font(19, True, True))
+        lay.addWidget(t)
+        size = f", {rel['size'] / 1e6:.0f} MB" if rel.get("size") else ""
+        sub = QLabel(f"Du hast Version {__version__}{size}. Deine Matches und Einstellungen bleiben erhalten.")
+        sub.setObjectName("muted")
+        sub.setWordWrap(True)
+        lay.addWidget(sub)
+        if self.mandatory:
+            warn = QLabel("Dieses Update ist wichtig und muss installiert werden, damit RL Tracker weiter funktioniert.")
+            warn.setWordWrap(True)
+            warn.setStyleSheet(f"color:{P.ACCENT}; font-weight:600;")
+            lay.addWidget(warn)
+        head = QLabel("Was ist neu")
+        head.setObjectName("h2")
+        lay.addWidget(head)
+        notes = QLabel(updates.notes_html(rel.get("notes", "")))
+        notes.setTextFormat(Qt.RichText)
+        notes.setWordWrap(True)
+        notes.setStyleSheet(f"color:{P.TEXT_2};")
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setMaximumHeight(260)
+        scroll.setWidget(notes)
+        lay.addWidget(scroll)
+        row = QHBoxLayout()
+        row.addStretch()
+        if not self.mandatory:
+            later = QPushButton("Später")
+            later.clicked.connect(self.reject)
+            row.addWidget(later)
+        go = QPushButton("Jetzt aktualisieren")
+        go.setObjectName("primary")
+        go.setDefault(True)
+        go.clicked.connect(self.accept)
+        row.addWidget(go)
+        lay.addLayout(row)
+
+
 class AccessDialog(QDialog):
     """Einmalige Zustimmung, bevor die App Einstellungen von Rocket League ändert."""
 
@@ -407,9 +458,23 @@ class ReplayView(QWidget):
         self.who.currentIndexChanged.connect(self._draw_heat)
         self.norm.toggled.connect(self._draw_heat)
         self.tabs.addTab(hm, "Positions-Heatmap")
+        hz = QWidget()
+        hzl = QVBoxLayout(hz)
+        hzl.setContentsMargins(0, 0, 0, 0)
+        hint = QLabel("Seitenansicht für die oben bei „Heatmap von“ gewählte Person bzw. den Ball.")
+        hint.setObjectName("muted")
+        hzl.addWidget(hint)
+        hsplit = QSplitter(Qt.Vertical)
+        self.cv_side = Canvas(height=4)
+        self.cv_heights = Canvas(height=3.5)
+        hsplit.addWidget(self.cv_side)
+        hsplit.addWidget(self.cv_heights)
+        hzl.addWidget(hsplit, 1)
+        self.tabs.addTab(hz, "Höhe")
         self.cv_cmp = Canvas()
         self.tabs.addTab(self.cv_cmp, "Vergleich")
         self.table = make_table(["Spieler", "Ø Tempo", "Max. Tempo", "Überschall %", "Boden %", "Wand %", "Luft %",
+                                 "Ø Höhe m", "Max. Höhe m",
                                  "Ø Boost", "0 Boost %", "100 Boost %", "Strecke km", "Def. Drittel %", "Mitte %",
                                  "Off. Drittel %", "Hinter Ball %", "Am nächsten am Ball %", "Ø Abstand Ball m"])
         self.tabs.addTab(self.table, "Tabelle")
@@ -485,7 +550,8 @@ class ReplayView(QWidget):
         for p in rep["players"]:
             s = p["summary"]
             rows.append([p["name"]] + [s.get(k, 0.0) for k in (
-                "avg_speed", "max_speed", "supersonic_pct", "ground_pct", "wall_pct", "air_pct", "avg_boost",
+                "avg_speed", "max_speed", "supersonic_pct", "ground_pct", "wall_pct", "air_pct",
+                "avg_height", "max_height", "avg_boost",
                 "zero_boost_pct", "full_boost_pct", "distance_km", "def_pct", "mid_pct", "off_pct",
                 "behind_ball_pct", "closest_to_ball_pct", "avg_dist_ball")])
             colors.append(P.TEAM[p["team"]])
@@ -502,9 +568,18 @@ class ReplayView(QWidget):
             self.cv_heat.draw(P.plot_replay_heatmap, self.rep, None, True, "ball")
         elif d is not None:
             self.cv_heat.draw(P.plot_replay_heatmap, self.rep, d, self.norm.isChecked())
+        if self.tabs.currentIndex() == 1:
+            self._draw_tab()
 
     def _draw_tab(self):
-        if self.rep and self.tabs.currentIndex() == 1:
+        if not self.rep:
+            return
+        i = self.tabs.currentIndex()
+        if i == 1:
+            d = self.who.currentData()
+            self.cv_side.draw(P.plot_replay_side, self.rep, "ball" if d == "ball" else d, self.norm.isChecked())
+            self.cv_heights.draw(P.plot_replay_heights, self.rep)
+        elif i == 2:
             self.cv_cmp.draw(P.plot_replay_compare, self.rep)
 
 
@@ -968,6 +1043,7 @@ class MainWindow(QMainWindow):
                                           f"<span style='color:{P.TEXT_2}'>Du hast {__version__}{size}</span>")
                 self.update_label.setToolTip(rel.get("notes", "")[:1500])
                 self.update_box.setVisible(True)
+                self._offer_update(rel)
         d = self._dl_future
         if d is not None:
             done, total = self._dl_progress
@@ -987,16 +1063,28 @@ class MainWindow(QMainWindow):
             os.startfile(str(path))  # Installer aktualisiert die App und startet sie neu
             QApplication.quit()
 
-    def _install_update(self):
+    def _offer_update(self, rel: dict):
+        """Update-Fenster beim Start; Pflicht-Updates ([wichtig]) lassen sich nicht wegklicken."""
+        dlg = UpdateDialog(rel, self)
+        if dlg.exec() == QDialog.Accepted:
+            self._install_update(confirm=False)
+        elif dlg.mandatory:
+            QMessageBox.information(self, APP_NAME, "Ohne dieses wichtige Update kann RL Tracker nicht genutzt "
+                                                    "werden. Die App wird jetzt beendet – beim nächsten Start "
+                                                    "kannst du das Update installieren.")
+            QApplication.quit()
+
+    def _install_update(self, confirm: bool = True):
         rel = self._update
         if not rel:
             return
         if not getattr(sys, "frozen", False) or sys.platform != "win32":
             QDesktopServices.openUrl(QUrl(rel.get("page") or rel["download"]))
             return
-        if QMessageBox.question(self, APP_NAME, f"Version {rel['version']} herunterladen und installieren?\n\n"
-                                                "Die App schließt sich dafür kurz und startet danach neu. "
-                                                "Deine Matches bleiben erhalten.") != QMessageBox.Yes:
+        if confirm and QMessageBox.question(
+                self, APP_NAME, f"Version {rel['version']} herunterladen und installieren?\n\n"
+                                "Die App schließt sich dafür kurz und startet danach neu. "
+                                "Deine Matches bleiben erhalten.") != QMessageBox.Yes:
             return
         self.update_btn.setEnabled(False)
 

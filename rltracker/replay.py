@@ -174,6 +174,13 @@ def _summary(p: dict, players: list[dict], ball: np.ndarray) -> dict:
         "avg_dist_ball": float(dist_ball.mean() / 100) if n else 0.0,
         "closest_to_ball_pct": float(100 * closest[ok].mean()) if n else 0.0,
         "distance_km": float(step[step_ok].sum() / 100000),
+        "avg_height": float(pos[:, 2].mean() / 100) if n else 0.0,
+        "max_height": float(pos[:, 2].max() / 100) if pos.size else 0.0,
+        "hz_ground": float(100 * np.mean((pos[:, 2] < 60) & ~on_wall)) if n else 0.0,
+        "hz_low": float(100 * np.mean((pos[:, 2] >= 60) & (pos[:, 2] < 300) & ~on_wall)) if n else 0.0,
+        "hz_mid": float(100 * np.mean((pos[:, 2] >= 300) & (pos[:, 2] < 1000) & ~on_wall)) if n else 0.0,
+        "hz_high": float(100 * np.mean((pos[:, 2] >= 1000) & ~on_wall)) if n else 0.0,
+        "hz_wall": float(100 * np.mean(on_wall)) if n else 0.0,
         "time_played": float(n / FPS),
     }
     if p["boost"] is not None:
