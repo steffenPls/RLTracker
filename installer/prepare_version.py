@@ -18,9 +18,11 @@ OUT = ROOT / "installer" / "version_info.generated.txt"
 def main() -> None:
     text = INIT.read_text(encoding="utf-8")
     if len(sys.argv) > 1 and sys.argv[1].strip():
-        version = sys.argv[1].strip().lstrip("vV")
-        if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+        # Tolerant gegenueber Tippfehlern im Tag: "v.1.1.0", "V 1.1.0", "version-1.1.0" -> 1.1.0
+        m = re.search(r"(\d+)\.(\d+)(?:\.(\d+))?", sys.argv[1])
+        if not m:
             sys.exit(f"Ungueltige Version '{sys.argv[1]}' – erwartet z.B. v1.2.0")
+        version = f"{m.group(1)}.{m.group(2)}.{m.group(3) or 0}"
         text = re.sub(r'__version__ = "[^"]*"', f'__version__ = "{version}"', text)
         INIT.write_text(text, encoding="utf-8")
     version = re.search(r'__version__ = "([^"]+)"', text).group(1)
