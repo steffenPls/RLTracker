@@ -1,0 +1,24 @@
+﻿RL Tracker – Nutzungsbedingungen und Hinweise
+=============================================
+
+Bitte lies diese Hinweise vor der Installation.
+
+1. Inoffizielle Fan-App
+RL Tracker ist ein unabhängiges, kostenloses Fan-Projekt. Es steht in keiner Verbindung zu Psyonix, Epic Games, Valve oder Steam und wird von ihnen weder unterstützt noch geprüft. „Rocket League“ ist eine Marke von Psyonix LLC / Epic Games, Inc.
+
+Portions of the materials used are trademarks and/or copyrighted works of Epic Games, Inc. All rights reserved by Epic. This material is not official and is not endorsed by Epic.
+
+2. Was die App tut
+RL Tracker liest die Daten der offiziellen, lokalen Stats-Schnittstelle von Rocket League (Port 49123 auf deinem eigenen PC) und deine gespeicherten Replays. Damit die Schnittstelle Daten sendet, muss sie in der Datei TAGame\Config\DefaultStatsAPI.ini (bzw. TAStatsAPI.ini) im Rocket-League-Ordner eingeschaltet werden. Das passiert nur mit deiner Zustimmung, vorher wird eine Sicherung angelegt, und bei der Deinstallation wird die Einstellung zurückgenommen.
+Die App verändert keine Spieldateien, installiert keine Mods, greift nicht in das Spiel ein und verschafft keinen spielerischen Vorteil.
+
+3. Datenschutz
+Alle Daten bleiben auf deinem PC (Ordner „Dokumente\RLTracker“). Die App sendet keine Spiel- oder Nutzerdaten ins Internet, enthält keine Werbung und kein Tracking. Einzige Ausnahme: Beim Start fragt sie bei GitHub nach, ob es eine neue Version gibt; dabei wird wie bei jedem Webseitenaufruf deine IP-Adresse an GitHub übertragen. Das lässt sich in der App unter „Einrichtung“ abschalten.
+
+4. Keine Gewährleistung
+Die Software wird kostenlos und ohne Gewähr zur Verfügung gestellt. Die Nutzung erfolgt auf eigene Verantwortung. Beachte die Nutzungsbedingungen und den Verhaltenskodex von Rocket League.
+
+5. Verwendete Software
+RL Tracker nutzt Qt for Python (PySide6, LGPLv3), matplotlib, NumPy und subtr-actor (MIT). Die Lizenztexte liegen nach der Installation im Unterordner „licenses“.
+
+Mit „Ich akzeptiere“ bestätigst du, dass du diese Hinweise gelesen hast.

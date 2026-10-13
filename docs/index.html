@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RL Tracker – Statistiken und Heatmaps für deine Rocket-League-Matches</title>
+  <meta name="description" content="Kostenlose Fan-App für Windows: zeichnet deine Rocket-League-Matches live auf und zeigt danach Heatmaps, Torszenen, Boost-Karten und über 40 Werte pro Spieler.">
+  <meta property="og:title" content="RL Tracker">
+  <meta property="og:description" content="Sieh nach jedem Match, wie du wirklich gespielt hast. Kostenlos für Windows.">
+  <meta property="og:image" content="assets/heatmap.png">
+  <link rel="icon" href="favicon.ico">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 4a28 28 0 0 0 0 56z" fill="#2f8cff"/><path d="M32 4a28 28 0 0 1 0 56z" fill="#ff7a1a"/><circle cx="32" cy="32" r="12" fill="#0c1322"/></svg>
+      RL Tracker
+    </a>
+    <nav aria-label="Seitenbereiche">
+      <a href="#funktionen">Funktionen</a>
+      <a href="#installieren">Installieren</a>
+      <a href="#updates">Updates</a>
+      <a href="#fragen">Fragen</a>
+    </nav>
+    <a class="btn btn-primary js-download" href="#installieren">Download</a>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <div class="bug" role="img" aria-label="Anzeigetafel: Blau 3, Orange 1">
+        <div class="name blue">Blau</div>
+        <div class="score blue" id="goal"><span>2</span></div>
+        <div class="clock">4:21</div>
+        <div class="score orange"><span>1</span></div>
+        <div class="name orange">Orange</div>
+      </div>
+
+      <h1>Sieh nach jedem Match, wie du wirklich gespielt hast.</h1>
+      <p class="lead">RL Tracker läuft neben Rocket League, zeichnet dein Match live auf und zeigt dir danach
+        Heatmaps, Torszenen, Boost-Karten und über 40 Werte pro Spieler. Kostenlos, ohne Konto –
+        alles bleibt auf deinem PC.</p>
+      <div class="cta">
+        <a class="btn btn-primary btn-big js-download" href="#installieren">Für Windows herunterladen</a>
+        <div class="meta"><strong class="js-version">Neueste Version</strong><br>Windows 10 und 11, Steam und Epic</div>
+      </div>
+
+      <img class="shot" src="assets/live.png" width="1380" height="860"
+           alt="Live-Ansicht von RL Tracker mit Anzeigetafel, Spielertabelle, Ticker und Karte der Ballkontakte">
+    </div>
+  </section>
+
+  <section id="funktionen">
+    <div class="wrap">
+      <h2>Was du nach dem Match siehst</h2>
+      <p class="intro">Die Auswertung öffnet sich automatisch, sobald das Match vorbei ist. Jedes Match wird gespeichert,
+        so siehst du auch, wie du dich über Wochen entwickelst.</p>
+
+      <div class="feature">
+        <div class="text">
+          <h3>Wo du den Ball triffst</h3>
+          <p>Heatmaps aller Ballberührungen – für dich, dein Team oder alle Spieler. Auf Wunsch aus Sicht
+            des eigenen Teams, damit du Matches auf beiden Seiten vergleichen kannst.</p>
+          <ul><li>Anteil in eigenem, mittlerem und gegnerischem Drittel</li><li>Luftkontakte und Schussstärke jeder Berührung</li></ul>
+        </div>
+        <figure><img src="assets/heatmap.png" width="1320" height="726" loading="lazy" alt="Heatmap der Ballberührungen eines Spielers auf dem Spielfeld"></figure>
+      </div>
+
+      <div class="feature or">
+        <div class="text">
+          <h3>Woher deine Tore kommen</h3>
+          <p>Jedes Tor mit der Position des letzten Schusses, dazu Schüsse, Paraden, Klärungen und
+            Lattentreffer auf einer Karte.</p>
+          <ul><li>Torgeschwindigkeit und schnellstes Tor</li><li>Boost-Karte: welche Pads ihr genommen und geklaut habt</li></ul>
+        </div>
+        <figure><img src="assets/torszenen.png" width="1320" height="726" loading="lazy" alt="Karte mit Toren, Schüssen und Paraden eines Matches"></figure>
+      </div>
+
+      <div class="feature bo">
+        <div class="text">
+          <h3>Deine Laufwege, das ganze Match</h3>
+          <p>Speicherst du nach dem Match das Replay, wertet RL Tracker es automatisch aus: wo jeder Spieler
+            die ganze Zeit war, wie viel Strecke, Tempo und Luftzeit, wie gut das Boost-Management war.</p>
+          <ul><li>Zeit hinter dem Ball und Nähe zum Ball</li><li>Ball-Heatmap für das ganze Spiel</li></ul>
+        </div>
+        <figure><img src="assets/replay.png" width="1320" height="726" loading="lazy" alt="Positions-Heatmap eines Spielers aus einem Replay"></figure>
+      </div>
+
+      <div class="feature">
+        <div class="text">
+          <h3>Wann das Spiel gekippt ist</h3>
+          <p>Spielstand, Ballgeschwindigkeit und Druckphasen auf einer Zeitachse. Daneben deine Siegquote
+            und Punkte über alle gespeicherten Matches.</p>
+          <ul><li>Export als Bild oder Tabelle</li><li>Demo-Match zum Ausprobieren ohne Spiel</li></ul>
+        </div>
+        <figure><img src="assets/verlauf.png" width="1320" height="726" loading="lazy" alt="Zeitverlauf mit Spielstand, Ballgeschwindigkeit und Druckphasen"></figure>
+      </div>
+    </div>
+  </section>
+
+  <section id="installieren">
+    <div class="wrap">
+      <h2>In drei Schritten startklar</h2>
+      <p class="intro">Ein normaler Windows-Installer, ohne Mods und ohne Konto.</p>
+      <ol class="steps">
+        <li><h3>Herunterladen</h3>
+          <p><a class="js-download" href="#">RLTracker-Setup.exe</a> laden und starten. Warnt Windows, klick auf
+            „Weitere Informationen“ und dann „Trotzdem ausführen“.</p></li>
+        <li><h3>Zugriff erlauben</h3>
+          <p>Der Installer fragt, ob RL Tracker die offizielle Stats-Schnittstelle von Rocket League einschalten darf.
+            Nur damit kommen die Live-Daten an.</p></li>
+        <li><h3>Spielen</h3>
+          <p>Rocket League neu starten und in ein Match oder ins Freeplay gehen. Nach dem Match öffnet sich
+            die Auswertung von selbst.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="updates">
+    <div class="wrap">
+      <h2>Was neu ist</h2>
+      <p class="intro">Die App meldet sich, wenn es eine neue Version gibt, und installiert sie mit einem Klick.
+        Deine Matches bleiben dabei erhalten.</p>
+      <article class="release" id="release">
+        <header><h3>RL Tracker</h3><span>Neueste Version</span></header>
+        <div class="notes">Lade die neueste Version über den Download-Knopf.</div>
+      </article>
+      <p><a class="js-all-releases" href="#">Alle Versionen ansehen</a></p>
+    </div>
+  </section>
+
+  <section id="fragen">
+    <div class="wrap">
+      <h2>Häufige Fragen</h2>
+      <details>
+        <summary>Ist das erlaubt? Bekomme ich Probleme mit dem Anti-Cheat?</summary>
+        <p>RL Tracker nutzt die offizielle Stats-Schnittstelle, die Psyonix für Overlays und Tools anbietet. Die App
+          verändert keine Spieldateien, liest keinen Spielspeicher, installiert keine Mods und verschafft dir keinen
+          spielerischen Vorteil. Sie wertet nur aus, was das Spiel selbst bereitstellt.</p>
+      </details>
+      <details>
+        <summary>Warum warnt Windows beim Installieren?</summary>
+        <p>Windows warnt bei neuen Programmen, die noch nicht digital signiert sind. Klick auf „Weitere Informationen“
+          und dann auf „Trotzdem ausführen“. Wer sichergehen will, vergleicht die Prüfsumme der Datei mit der auf der
+          Download-Seite: in PowerShell <code>Get-FileHash RLTracker-Setup.exe</code>.</p>
+      </details>
+      <details>
+        <summary>Welche Daten sammelt die App?</summary>
+        <p>Keine. Matches und Einstellungen liegen in <code>Dokumente\RLTracker</code> auf deinem PC. Die App fragt beim Start
+          nur bei GitHub nach, ob es eine neue Version gibt – das lässt sich abschalten.</p>
+      </details>
+      <details>
+        <summary>Geht das mit Steam und Epic?</summary>
+        <p>Ja, mit beiden – auch wenn beide installiert sind. Der Installer stellt alle gefundenen Installationen ein.</p>
+      </details>
+      <details>
+        <summary>Die App zeigt „Wartet auf das Spiel“.</summary>
+        <ol>
+          <li>Rocket League komplett beenden und neu starten – die Einstellung wird nur beim Spielstart gelesen.</li>
+          <li>In ein Match oder ins Freeplay gehen; im Hauptmenü sendet das Spiel nichts.</li>
+          <li>Hilft das nicht: in der App „Verbindung prüfen“ und „Automatisch reparieren“ klicken.</li>
+        </ol>
+      </details>
+      <details>
+        <summary>Wie deinstalliere ich RL Tracker?</summary>
+        <p>Windows-Einstellungen, Apps, RL Tracker, Deinstallieren. Dabei wird die Stats-Schnittstelle wieder
+          ausgeschaltet. Deine gespeicherten Matches bleiben in <code>Dokumente\RLTracker</code>, bis du den Ordner löschst.</p>
+      </details>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="links">
+      <a href="impressum.html">Impressum</a>
+      <a href="datenschutz.html">Datenschutz</a>
+      <a class="js-repo" href="#">Projekt auf GitHub</a>
+      <a class="js-all-releases" href="#">Alle Versionen</a>
+    </div>
+    <p class="legal">RL Tracker ist eine inoffizielle, kostenlose Fan-App und steht in keiner Verbindung zu Psyonix,
+      Epic Games, Valve oder Steam. Rocket League ist eine Marke von Psyonix LLC.<br>
+      Portions of the materials used are trademarks and/or copyrighted works of Epic Games, Inc. All rights reserved
+      by Epic. This material is not official and is not endorsed by Epic.</p>
+  </div>
+</footer>
+
+<script>
+  // ===== Einstellung: dein GitHub-Projekt (genauso wie GITHUB_REPO in rltracker/__init__.py) =====
+  const REPO = "steffenPls/rltracker";
+
+  const configured = !/DEIN/i.test(REPO);
+  const releases = `https://github.com/${REPO}/releases`;
+  // Dieser Link zeigt immer auf die neueste Version – nach einem Update muss hier nichts geändert werden.
+  const download = `${releases}/latest/download/RLTracker-Setup.exe`;
+
+  if (configured) {
+    document.querySelectorAll(".js-download").forEach(a => a.href = download);
+    document.querySelectorAll(".js-all-releases").forEach(a => a.href = releases);
+    document.querySelectorAll(".js-repo").forEach(a => a.href = `https://github.com/${REPO}`);
+  }
+
+  // Anzeigetafel: einmal ein Tor für Blau
+  const goal = document.getElementById("goal");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  setTimeout(() => { goal.innerHTML = "<span>3</span>"; goal.classList.add("goal"); }, reduce ? 0 : 900);
+
+  // Neueste Version von GitHub anzeigen (Versionsnummer, Datum, Größe, Änderungen)
+  const esc = s => s.replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+  function notesToHtml(md) {
+    const out = []; let list = false;
+    for (const raw of md.split(/\r?\n/)) {
+      const line = raw.trim();
+      const item = line.match(/^[-*]\s+(.*)/);
+      if (item) { if (!list) { out.push("<ul>"); list = true; } out.push(`<li>${esc(item[1])}</li>`); continue; }
+      if (list) { out.push("</ul>"); list = false; }
+      if (line) out.push(`<p>${esc(line.replace(/^#+\s*/, ""))}</p>`);
+    }
+    if (list) out.push("</ul>");
+    return out.join("");
+  }
+  if (configured) {
+    fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {headers: {Accept: "application/vnd.github+json"}})
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(rel => {
+        const v = (rel.tag_name || "").replace(/^v/i, "");
+        const asset = (rel.assets || []).find(a => a.name === "RLTracker-Setup.exe");
+        const size = asset ? `, ${Math.round(asset.size / 1e6)} MB` : "";
+        const date = new Date(rel.published_at).toLocaleDateString("de-DE", {day: "numeric", month: "long", year: "numeric"});
+        document.querySelectorAll(".js-version").forEach(e => e.textContent = `Version ${v}${size}`);
+        const box = document.getElementById("release");
+        box.querySelector("h3").textContent = `Version ${v}`;
+        box.querySelector("header span").textContent = date;
+        box.querySelector(".notes").innerHTML = rel.body ? notesToHtml(rel.body) : "Fehlerbehebungen und Verbesserungen.";
+      })
+      .catch(() => {});
+  }
+</script>
+</body>
+</html>
