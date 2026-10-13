@@ -60,6 +60,7 @@ class MatchView(QWidget):
         self.settings = settings
         self.match: dict | None = None
         self.an: dict | None = None
+        self.pressure: dict | None = None
         self._dirty: set[int] = set()
 
         lay = QVBoxLayout(self)
@@ -219,7 +220,25 @@ class MatchView(QWidget):
         self.h3_norm.toggled.connect(lambda: self._redraw(10))
         self.tabs.addTab(h3, "Höhe & 3D")
 
-        # 10 Ereignisse --------------------------------------------------------
+        # 11 Druckphasen -------------------------------------------------------
+        pr = QWidget()
+        prl = QVBoxLayout(pr)
+        psplit = QSplitter(Qt.Vertical)
+        self.cv_pressure = Canvas()
+        psplit.addWidget(self.cv_pressure)
+        self.pr_table = make_table(["#", "Team", "Von", "Bis", "Dauer", "Stärke", "Schüsse", "Paraden Gegner", "Ergebnis"])
+        psplit.addWidget(self.pr_table)
+        psplit.setSizes([620, 220])
+        prl.addWidget(psplit, 1)
+        note = QLabel("Druck entsteht durch Ballkontakte in der gegnerischen Hälfte, Flanken, Schüsse und Paraden "
+                      "des Gegners – frische Aktionen zählen mehr als ältere. Eine Druckphase ist ein Abschnitt "
+                      f"von mindestens {A.PRESSURE_MIN_LEN:.0f} s, in dem ein Team klar überlegen angreift.")
+        note.setObjectName("muted")
+        note.setWordWrap(True)
+        prl.addWidget(note)
+        self.tabs.addTab(pr, "Druckphasen")
+
+        # 12 Ereignisse --------------------------------------------------------
         self.events = make_table(["Zeit", "Ereignis", "Spieler", "Details"])
         self.tabs.addTab(self.events, "Ereignisse")
 
@@ -227,6 +246,10 @@ class MatchView(QWidget):
     def show_match(self, match: dict) -> None:
         self.match = match
         self.an = A.analyze(match)
+        try:
+            self.pressure = A.pressure_summary(match)
+        except Exception:  # Druck-Analyse darf die Auswertung nie verhindern
+            self.pressure = None
         self._fill_header()
         self._fill_selectors()
         self._fill_overview()
@@ -340,7 +363,14 @@ class MatchView(QWidget):
                       "nach letztem Kontakt", P.TEAM[0]))
         tiles.append(("Ø Ballgeschwindigkeit", f"{mm['avg_ball_speed']:.0f} km/h",
                       f"max. {mm['max_ball_speed']:.0f} km/h", P.TEXT_2))
-        tiles.append(("Ballkontakte", str(mm["total_touches"]), f"{mm['crossbars']}× Latte/Pfosten", P.TEXT_2))
+        if self.pressure:
+            pt = self.pressure["teams"]
+            dom = 0 if pt[0]["pressure_pct"] >= pt[1]["pressure_pct"] else 1
+            tiles.append(("Mehr Druck", "Blau" if dom == 0 else "Orange",
+                          f"{pt[dom]['pressure_pct']:.0f} % vs. {pt[1 - dom]['pressure_pct']:.0f} % der Zeit",
+                          P.TEAM[dom]))
+        else:
+            tiles.append(("Ballkontakte", str(mm["total_touches"]), f"{mm['crossbars']}× Latte/Pfosten", P.TEXT_2))
         for i, (title, big, sub, col) in enumerate(tiles):
             self.highlights.addWidget(StatTile(title, big, sub, col), 0, i)
 
@@ -425,6 +455,30 @@ class MatchView(QWidget):
                 self.cv_height.draw(P.plot_side_view, m, self.h3_who.currentData(), self.h3_norm.isChecked())
             else:
                 self.cv_height.draw(P.plot_height_breakdown, m, an)
+        elif idx == 11:
+            self.cv_pressure.draw(P.plot_pressure, m, self.pressure)
+            self._fill_pressure_table()
+
+    def _fill_pressure_table(self) -> None:
+        rows, colors = [], []
+        ps = self.match["players"]
+        for n, p in enumerate((self.pressure or {}).get("phases", []), 1):
+            if p["goal"]:
+                res = "Tor" + (f" ({ps.get(p['scorer'], {}).get('name', '?')})" if p.get("scorer") else "")
+            elif p["conceded"]:
+                res = "Konter-Gegentor"
+            elif p["saves"]:
+                res = "pariert"
+            elif p["shots"]:
+                res = "Schuss vorbei"
+            else:
+                res = "abgewehrt"
+            rows.append([n, "Blau" if p["team"] == 0 else "Orange",
+                         (p["start"], A.fmt_time(p["start"])), (p["end"], A.fmt_time(p["end"])),
+                         (p["duration"], f"{p['duration']:.0f} s"), (p["avg"], f"{p['avg'] * 100:.0f} %"),
+                         p["shots"], p["saves"], res])
+            colors.append(P.TEAM[p["team"]])
+        fill_table(self.pr_table, rows, colors)
 
     def _current_canvas(self):
         w = self.tabs.currentWidget()

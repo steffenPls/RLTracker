@@ -396,19 +396,116 @@ def plot_timeline(fig: Figure, match: dict) -> None:
     _title(ax2, "Ballgeschwindigkeit")
 
     ax3 = fig.add_subplot(gs[2], sharex=ax)
-    style_ax(ax3)
-    ts, vals = A.momentum_series(match)
-    if ts:
-        v = np.array(vals)
-        ax3.fill_between(ts, 0, v, where=v >= 0, color=TEAM[0], alpha=0.8, interpolate=True, lw=0)
-        ax3.fill_between(ts, 0, v, where=v < 0, color=TEAM[1], alpha=0.8, interpolate=True, lw=0)
-    ax3.axhline(0, color=LINE, lw=1)
-    ax3.set_ylim(-1.05, 1.05)
-    ax3.set_yticks([-1, 0, 1])
-    ax3.set_yticklabels(["Orange", "", "Blau"])
-    _goal_lines(ax3, match)
-    _title(ax3, "Druckphasen", "Wer hatte den Ball zuletzt berührt (gleitende 20 s)")
+    _pressure_axis(ax3, match, A.pressure_series(match), compact=True)
+    _title(ax3, "Druck", "Wer greift gerade an – Details im Tab „Druckphasen“")
     _time_axis(ax3, tmax)
+
+
+def _pressure_axis(ax, match: dict, s: dict, compact: bool = False, phases: list | None = None) -> None:
+    """Druck-Index als Flaeche: nach oben = Blau drueckt, nach unten = Orange drueckt."""
+    style_ax(ax, grid_axis="")
+    t = np.array(s["t"])
+    v = np.clip(np.array(s["index"]), -1, 1)
+    act = np.array(s["active"], dtype=bool)
+    if len(t):
+        vv = np.where(act, v, 0.0)
+        th = A.PRESSURE_THRESHOLD
+        ax.fill_between(t, 0, vv, where=vv >= 0, color=TEAM[0], alpha=0.35, interpolate=True, lw=0)
+        ax.fill_between(t, 0, vv, where=vv < 0, color=TEAM[1], alpha=0.35, interpolate=True, lw=0)
+        # starker Druck kraeftig hervorheben
+        ax.fill_between(t, th, vv, where=vv >= th, color=TEAM[0], alpha=0.9, interpolate=True, lw=0)
+        ax.fill_between(t, -th, vv, where=vv <= -th, color=TEAM[1], alpha=0.9, interpolate=True, lw=0)
+        ax.plot(t, vv, color=TEXT, lw=0.6, alpha=0.35)
+        # Pausen (nach Toren, Anstoss-Countdown) grau hinterlegen
+        start = None
+        for i, a in enumerate(list(act) + [True]):
+            if not a and start is None:
+                start = t[i]
+            elif a and start is not None:
+                ax.axvspan(start, t[min(i, len(t) - 1)], color=GRID, alpha=0.6, lw=0, zorder=0)
+                start = None
+        for y in (th, -th):
+            ax.axhline(y, color=MUTED, lw=0.8, ls=(0, (2, 3)), alpha=0.7)
+    ax.axhline(0, color=LINE, lw=1)
+    ax.set_ylim(-1.08, 1.08)
+    ax.set_yticks([-1, 0, 1])
+    ax.set_yticklabels(["Orange\ndrückt", "", "Blau\ndrückt"] if not compact else ["Orange", "", "Blau"],
+                       fontsize=8.5)
+    for lbl, team in zip(ax.get_yticklabels(), (1, None, 0)):
+        if team is not None:
+            lbl.set_color(TEAM[team])
+    # Tore als Marker am Rand
+    for g in match.get("goals", []):
+        y = 1.0 if g["team"] == 0 else -1.0
+        ax.axvline(g["t"], color=TEAM[g["team"]], lw=1, alpha=0.5, ls=(0, (3, 3)))
+        ax.scatter([g["t"]], [y], s=70 if not compact else 40, marker="o", color=TEAM[g["team"]],
+                   edgecolor="white", lw=1.2, zorder=5, clip_on=False)
+    if phases and not compact:
+        for n, p in enumerate(phases, 1):
+            y = 1.0 if p["team"] == 0 else -1.0
+            ax.annotate(str(n), ((p["start"] + p["end"]) / 2, y * 0.62), ha="center", va="center",
+                        color="white", fontsize=8, fontweight="bold",
+                        bbox=dict(boxstyle="circle,pad=0.25", fc=TEAM_DARK[p["team"]], ec=TEAM[p["team"]], lw=1))
+
+
+def plot_pressure(fig: Figure, match: dict, summary: dict | None = None) -> None:
+    """Grosse Druck-Grafik: wann stand welches Team unter Druck – plus Kennzahlen."""
+    fig.clear()
+    style_fig(fig)
+    sm = summary or A.pressure_summary(match)
+    s, phases = sm["series"], sm["phases"]
+    if not s["t"] or not (match.get("touches") or match.get("feed")):
+        empty(fig, "Für dieses Match gibt es zu wenige Daten für die Druck-Analyse.")
+        return
+    tmax = match["meta"].get("duration", 0) or s["t"][-1]
+    gs = fig.add_gridspec(2, 2, height_ratios=[2.3, 1], width_ratios=[1.35, 1], hspace=0.55, wspace=0.3,
+                          left=0.08, right=0.97, top=0.9, bottom=0.08)
+    ax = fig.add_subplot(gs[0, :])
+    _pressure_axis(ax, match, s, phases=phases)
+    _time_axis(ax, tmax)
+    names = {t: match["meta"]["teams"][str(t)].get("name") for t in (0, 1)}
+    names = {0: "Blau" if str(names[0]).lower() in ("blue", "none", "") else names[0],
+             1: "Orange" if str(names[1]).lower() in ("orange", "none", "") else names[1]}
+    _title(ax, "Druckphasen",
+           f"Fläche nach oben = {names[0]} greift an (Orange unter Druck) · nach unten = {names[1]} greift an · "
+           f"kräftig = starker Druck · Kreise = Tore · grau = Pause")
+
+    # Anteil der Spielzeit mit Druck
+    ax2 = fig.add_subplot(gs[1, 0])
+    style_ax(ax2, grid_axis="")
+    tb, to = sm["teams"][0]["pressure_pct"], sm["teams"][1]["pressure_pct"]
+    rest = max(0.0, 100 - tb - to)
+    ax2.barh([0], [tb], color=TEAM[0], height=0.5)
+    ax2.barh([0], [rest], left=[tb], color=RAISED, height=0.5)
+    ax2.barh([0], [to], left=[tb + rest], color=TEAM[1], height=0.5)
+    if tb >= 6:
+        ax2.text(tb / 2, 0, f"{tb:.0f} %", ha="center", va="center", color="white", fontsize=10, fontweight="bold")
+    if rest >= 10:
+        ax2.text(tb + rest / 2, 0, f"ausgeglichen {rest:.0f} %", ha="center", va="center", color=TEXT_2, fontsize=8.5)
+    if to >= 6:
+        ax2.text(100 - to / 2, 0, f"{to:.0f} %", ha="center", va="center", color="white", fontsize=10, fontweight="bold")
+    ax2.set_xlim(0, 100)
+    ax2.set_ylim(-0.6, 0.6)
+    ax2.set_yticks([])
+    ax2.set_xticks([])
+    for sp in ax2.spines.values():
+        sp.set_visible(False)
+    _title(ax2, "Wer hat mehr Druck gemacht?", f"Anteil der Spielzeit · {names[0]} links, {names[1]} rechts")
+
+    # Kennzahlen-Tabelle
+    ax3 = fig.add_subplot(gs[1, 1])
+    ax3.set_axis_off()
+    rows = [("Druckphasen", "phases", "{:.0f}"), ("Längste Phase", "longest", "{:.0f} s"),
+            ("Schüsse in Phasen", "shots", "{:.0f}"), ("Tore aus Druck", "goals", "{:.0f}")]
+    ax3.text(0.0, 1.02, "Kennzahlen", color=TEXT, fontsize=12, fontweight="bold", transform=ax3.transAxes, va="bottom")
+    ax3.text(0.62, 0.86, names[0], color=TEAM[0], fontsize=9.5, fontweight="bold", ha="center", transform=ax3.transAxes)
+    ax3.text(0.9, 0.86, names[1], color=TEAM[1], fontsize=9.5, fontweight="bold", ha="center", transform=ax3.transAxes)
+    for i, (lbl, key, fmt) in enumerate(rows):
+        y = 0.66 - i * 0.2
+        ax3.text(0.0, y, lbl, color=TEXT_2, fontsize=9.5, transform=ax3.transAxes, va="center")
+        for x, team in ((0.62, 0), (0.9, 1)):
+            ax3.text(x, y, fmt.format(sm["teams"][team][key]), color=TEXT, fontsize=10.5, ha="center",
+                     va="center", transform=ax3.transAxes, fontweight="bold")
 
 
 def plot_player_series(fig: Figure, match: dict, key: str) -> None:
@@ -651,6 +748,35 @@ HEIGHT_RAMP = LinearSegmentedColormap.from_list("height", ["#7a5c16", "#b8891c",
 HEIGHT_COLORS = {"ground": "#a9cdff", "jump": "#6aaeff", "air": "#2f8cff", "high": "#1a4f9a", "wall": "#7d8db0"}
 
 
+from mpl_toolkits.mplot3d import Axes3D  # noqa: E402
+from matplotlib.projections import register_projection  # noqa: E402
+
+ELEV_RANGE = (0.0, 90.0)  # von der Seite (0°) bis senkrecht von oben (90°) – nie von unten
+
+
+class ArenaAxes3D(Axes3D):
+    """3D-Achse, die sich nur seitlich (um die Hochachse) und hoch/runter drehen laesst.
+
+    Kein Kippen/Rollen und kein Blick von unten – die Arena steht immer richtig herum.
+    """
+    name = "arena3d"
+
+    def view_init(self, elev=None, azim=None, roll=None, **kw):
+        if elev is not None:
+            elev = min(max(float(elev), ELEV_RANGE[0]), ELEV_RANGE[1])
+        return super().view_init(elev=elev, azim=azim, roll=0, **kw)
+
+    def _on_move(self, event):
+        # "azel" = einfache Dreh-Steuerung: links/rechts dreht, hoch/runter neigt
+        if "axes3d.mouserotationstyle" in matplotlib.rcParams:
+            with matplotlib.rc_context({"axes3d.mouserotationstyle": "azel"}):
+                return super()._on_move(event)
+        return super()._on_move(event)
+
+
+register_projection(ArenaAxes3D)
+
+
 def _touch_points(match: dict, keys, normalize: bool):
     players = match["players"]
     keys = keys or list(players)
@@ -699,7 +825,7 @@ def plot_touch_3d(fig: Figure, match: dict, keys, normalize: bool = False, elev:
     fig.clear()
     style_fig(fig)
     keys, pts = _touch_points(match, keys, normalize)
-    ax = fig.add_axes([0.0, 0.02, 0.9, 0.9], projection="3d")
+    ax = fig.add_axes([0.0, 0.02, 0.9, 0.9], projection="arena3d")
     _arena_3d(ax)
     ax.view_init(elev=elev, azim=azim)
     if pts:
@@ -724,7 +850,7 @@ def plot_touch_3d(fig: Figure, match: dict, keys, normalize: bool = False, elev:
         ax.scatter([y], [x], [g["z"]], marker="*", s=180, color=TEAM[g["team"]], edgecolor="white",
                    linewidth=0.8, depthshade=False, zorder=4)
     fig.text(0.02, 0.95, "Ballberührungen in 3D", color=TEXT, fontsize=12, fontweight="bold", va="top")
-    fig.text(0.02, 0.905, f"{len(pts)} Berührungen · Farbe = Höhe · mit der Maus drehen, Mausrad zum Zoomen",
+    fig.text(0.02, 0.905, f"{len(pts)} Berührungen · Farbe = Höhe · Maus links/rechts = drehen, hoch/runter = neigen",
              color=MUTED, fontsize=8.5, va="top")
 
 

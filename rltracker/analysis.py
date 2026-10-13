@@ -97,17 +97,74 @@ def to_uu(v) -> float:
     return v / UU_TO_KMH if 0 < v <= MAX_BALL_KMH else v
 
 
-def fix_units(match: dict) -> dict:
-    """Korrigiert Matches, die mit der alten Version (falsche Torgeschwindigkeit) gespeichert wurden."""
-    if match.get("units_v2"):
+MAX_CAR_KMH = 130.0  # Auto: Ueberschall ~2300 uu/s = 83 km/h
+
+
+class UnitGuess:
+    """Live-Erkennung, ob ein Messwert in km/h oder uu/s kommt.
+
+    Startet mit km/h (so sendet es Rocket League). Sobald ein Wert ueber `limit` auftaucht,
+    kann es nur uu/s sein (z.B. Demo-Modus) – dann wird ab da umgerechnet.
+    """
+
+    def __init__(self, limit: float) -> None:
+        self.limit = limit
+        self.uu = False
+
+    def kmh(self, v) -> float:
+        try:
+            v = float(v or 0)
+        except (TypeError, ValueError):
+            return 0.0
+        if v > self.limit:
+            self.uu = True
+        return v * UU_TO_KMH if self.uu else v
+
+
+def _is_kmh(values, limit: float) -> bool:
+    """Eine ganze Messreihe ist km/h, wenn kein einziger Wert ueber dem km/h-Maximum liegt."""
+    vals = [v for v in values if v and v > 0]
+    return bool(vals) and max(vals) <= limit
+
+
+def normalize_speeds(match: dict) -> dict:
+    """Rechnet Ball-, Schuss- und Autotempo eines Matches einheitlich in uu/s um.
+
+    Das Spiel sendet diese Werte in km/h, der Demo-Modus in uu/s. Pro Messreihe wird erkannt,
+    welche Einheit vorliegt (km/h-Werte bleiben immer unter ~250, uu/s-Werte nicht).
+    """
+    if match.get("units_v3"):
         return match
-    for g in match.get("goals", []):
-        g["speed"] = to_uu(g.get("speed"))
-        g["last_touch_speed"] = to_uu(g.get("last_touch_speed"))
-    for c in match.get("crossbars", []):
-        c["speed"] = to_uu(c.get("speed"))
-    match["units_v2"] = True
+    f = 1.0 / UU_TO_KMH
+    samples = match.get("samples", [])
+    if _is_kmh((s.get("ball_speed", 0) for s in samples), MAX_BALL_KMH):
+        for s in samples:
+            s["ball_speed"] = s.get("ball_speed", 0) * f
+    touches = match.get("touches", [])
+    if _is_kmh([t.get("post", 0) for t in touches] + [t.get("pre", 0) for t in touches], MAX_BALL_KMH):
+        for t in touches:
+            t["pre"] = t.get("pre", 0) * f
+            t["post"] = t.get("post", 0) * f
+    rows = [r for s in samples for r in s.get("players", {}).values() if "speed" in r]
+    if _is_kmh((r["speed"] for r in rows), MAX_CAR_KMH):
+        for r in rows:
+            r["speed"] *= f
+    match["units_v3"] = True
     return match
+
+
+def fix_units(match: dict) -> dict:
+    """Bringt gespeicherte und frisch aufgezeichnete Matches auf einheitliche Einheiten (uu/s)."""
+    if match.get("source", "live") != "live":
+        return match
+    if not match.get("units_v2"):
+        for g in match.get("goals", []):
+            g["speed"] = to_uu(g.get("speed"))
+            g["last_touch_speed"] = to_uu(g.get("last_touch_speed"))
+        for c in match.get("crossbars", []):
+            c["speed"] = to_uu(c.get("speed"))
+        match["units_v2"] = True
+    return normalize_speeds(match)
 
 
 def _pct(a, b) -> float:
@@ -255,6 +312,186 @@ def momentum_series(match: dict, window: float = 20.0) -> tuple[list[float], lis
         ts.append(x["t"])
         vals.append(sum(seg) / len(seg))
     return ts, vals
+
+
+# ---------------------------------------------------------------- Druck
+# Druck = wie stark ein Team gerade angreift. Jede Angriffsaktion gibt Punkte, die mit einer
+# Halbwertszeit abklingen. Der Druck-Index vergleicht beide Teams: +1 = Blau drueckt, -1 = Orange.
+PRESSURE_HALF_LIFE = 7.0     # Sekunden
+PRESSURE_THRESHOLD = 0.35    # ab hier gilt eine Phase als "Druckphase"
+PRESSURE_MIN_LEN = 8.0       # Mindestdauer einer Druckphase (s)
+PRESSURE_GAP = 2.5           # kurze Unterbrechungen werden ueberbrueckt (s)
+PRESSURE_DAMP = 1.5          # ruhige Phasen -> Index nahe 0
+PRESSURE_W = {
+    "touch_off": 1.0,        # Kontakt im gegnerischen Drittel
+    "touch_half": 0.35,      # Kontakt in der gegnerischen Haelfte
+    "center": 1.5,           # Flanke
+    "shot": 3.0,             # Torschuss
+    "save_against": 2.0,     # Gegner musste parieren
+    "goal": 4.0,
+    "hold": 0.06,            # pro 0,5 s: Ball zuletzt in der gegnerischen Haelfte beruehrt
+}
+
+
+def _team_of(key: str | None, players: dict) -> int | None:
+    if not key:
+        return None
+    if key in players:
+        return int(players[key]["team"])
+    try:
+        return int(str(key).split(":", 1)[0])
+    except ValueError:
+        return None
+
+
+def pressure_events(match: dict, until: float | None = None) -> list[tuple[float, int, float, str]]:
+    """Alle Angriffsaktionen als (zeit, team, gewicht, art), zeitlich sortiert."""
+    players = match.get("players", {})
+    w = PRESSURE_W
+    ev: list[tuple[float, int, float, str]] = []
+    touches = [t for t in match.get("touches", []) if t.get("y") is not None]
+    for t in touches:
+        rel = t["y"] * attack_sign(t["team"])
+        if rel > THIRD:
+            ev.append((t["t"], t["team"], w["touch_off"], "touch"))
+        elif rel > 0:
+            ev.append((t["t"], t["team"], w["touch_half"], "touch"))
+    for e in match.get("feed", []):
+        name = (e.get("event") or e.get("type") or "").replace(" ", "")
+        team = _team_of(e.get("player"), players)
+        if team is None:
+            continue
+        if name == "Shot":
+            ev.append((e["t"], team, w["shot"], "shot"))
+        elif name in ("Save", "EpicSave"):
+            ev.append((e["t"], 1 - team, w["save_against"], "save"))
+        elif name == "Center":
+            ev.append((e["t"], team, w["center"], "center"))
+    for g in match.get("goals", []):
+        ev.append((g["t"], g["team"], w["goal"], "goal"))
+    # Ballkontrolle in der gegnerischen Haelfte (Position der letzten Beruehrung)
+    j, last = 0, None
+    for s in match.get("samples", []):
+        while j < len(touches) and touches[j]["t"] <= s["t"]:
+            last = touches[j]
+            j += 1
+        if last and s.get("active", True) and last["y"] * attack_sign(last["team"]) > 0:
+            ev.append((s["t"], last["team"], w["hold"], "hold"))
+    if until is not None:
+        ev = [e for e in ev if e[0] <= until]
+    ev.sort(key=lambda e: e[0])
+    return ev
+
+
+def _kickoffs(match: dict) -> list[float]:
+    return sorted(e["t"] for e in match.get("events", []) if e.get("event") == "Kickoff")
+
+
+def pressure_series(match: dict, step: float = 0.5) -> dict:
+    """Druck beider Teams ueber die Zeit.
+
+    Rueckgabe: {"t": [...], "blue": [...], "orange": [...], "index": [...], "active": [...]}
+    """
+    ev = pressure_events(match)
+    kicks = _kickoffs(match)
+    samples = match.get("samples", [])
+    tmax = max([match.get("meta", {}).get("duration", 0) or 0] + [e[0] for e in ev] +
+               [s["t"] for s in samples[-1:]])
+    decay = 0.5 ** (step / PRESSURE_HALF_LIFE)
+    ts, b, o, idx, act = [], [], [], [], []
+    p = [0.0, 0.0]
+    i = k = si = 0
+    active = True
+    t = 0.0
+    while t <= tmax + 1e-9:
+        p[0] *= decay
+        p[1] *= decay
+        while k < len(kicks) and kicks[k] <= t:  # Anstoss: Druck beginnt neu
+            p = [0.0, 0.0]
+            k += 1
+        while i < len(ev) and ev[i][0] <= t:
+            p[ev[i][1]] += ev[i][2]
+            i += 1
+        while si < len(samples) and samples[si]["t"] <= t:
+            active = samples[si].get("active", True)
+            si += 1
+        ts.append(round(t, 2))
+        b.append(p[0])
+        o.append(p[1])
+        idx.append((p[0] - p[1]) / (p[0] + p[1] + PRESSURE_DAMP))
+        act.append(active)
+        t += step
+    return {"t": ts, "blue": b, "orange": o, "index": idx, "active": act, "step": step}
+
+
+def pressure_now(match: dict | None, t: float) -> tuple[float, float, float]:
+    """Aktueller Druck (blau, orange, index) – fuer die Live-Anzeige."""
+    if not match:
+        return 0.0, 0.0, 0.0
+    start = max([k for k in _kickoffs(match) if k <= t] + [t - 8 * PRESSURE_HALF_LIFE])
+    p = [0.0, 0.0]
+    for te, team, w, _ in pressure_events(match, until=t):
+        if te >= start:
+            p[team] += w * 0.5 ** ((t - te) / PRESSURE_HALF_LIFE)
+    return p[0], p[1], (p[0] - p[1]) / (p[0] + p[1] + PRESSURE_DAMP)
+
+
+def pressure_phases(match: dict, series: dict | None = None) -> list[dict]:
+    """Zusammenhaengende Druckphasen eines Teams (Index ueber der Schwelle, mind. PRESSURE_MIN_LEN)."""
+    s = series or pressure_series(match)
+    ts, idx, act, step = s["t"], s["index"], s["active"], s["step"]
+    raw: list[list] = []  # [team, start_i, end_i]
+    for i, v in enumerate(idx):
+        team = 0 if v >= PRESSURE_THRESHOLD else (1 if v <= -PRESSURE_THRESHOLD else None)
+        if team is None or not act[i]:
+            continue
+        if raw and raw[-1][0] == team and (i - raw[-1][2]) * step <= PRESSURE_GAP:
+            raw[-1][2] = i
+        else:
+            raw.append([team, i, i])
+    feed = match.get("feed", [])
+    players = match.get("players", {})
+    out = []
+    for team, a, e in raw:
+        t0, t1 = ts[a], ts[e]
+        if t1 - t0 < PRESSURE_MIN_LEN:
+            continue
+        seg = idx[a:e + 1]
+        shots = sum(1 for f in feed if t0 - 1 <= f["t"] <= t1 + 1 and
+                    (f.get("event") or "").replace(" ", "") == "Shot" and _team_of(f.get("player"), players) == team)
+        saves = sum(1 for f in feed if t0 - 1 <= f["t"] <= t1 + 1 and
+                    (f.get("event") or "").replace(" ", "") in ("Save", "EpicSave") and
+                    _team_of(f.get("player"), players) == 1 - team)
+        goal = next((g for g in match.get("goals", []) if g["team"] == team and t0 - 1 <= g["t"] <= t1 + 3), None)
+        conceded = next((g for g in match.get("goals", []) if g["team"] != team and t0 <= g["t"] <= t1 + 3), None)
+        out.append({
+            "team": team, "start": t0, "end": t1, "duration": t1 - t0,
+            "peak": max(abs(v) for v in seg), "avg": sum(abs(v) for v in seg) / len(seg),
+            "shots": shots, "saves": saves,
+            "goal": goal is not None, "scorer": goal["scorer"] if goal else None,
+            "conceded": conceded is not None,
+        })
+    return out
+
+
+def pressure_summary(match: dict) -> dict:
+    """Kennzahlen pro Team: Anteil Zeit mit Druck, Anzahl Phasen, laengste Phase, Tore daraus."""
+    s = pressure_series(match)
+    phases = pressure_phases(match, s)
+    active_n = sum(1 for a in s["active"] if a) or 1
+    res = {"series": s, "phases": phases, "teams": {}}
+    for team in (0, 1):
+        sign = 1 if team == 0 else -1
+        ph = [p for p in phases if p["team"] == team]
+        on = sum(1 for v, a in zip(s["index"], s["active"]) if a and v * sign >= PRESSURE_THRESHOLD)
+        res["teams"][team] = {
+            "pressure_pct": 100.0 * on / active_n,
+            "phases": len(ph),
+            "longest": max((p["duration"] for p in ph), default=0.0),
+            "goals": sum(1 for p in ph if p["goal"]),
+            "shots": sum(p["shots"] for p in ph),
+        }
+    return res
 
 
 def local_player_key(match: dict, preferred_name: str = "") -> str | None:

@@ -321,6 +321,87 @@ class ScoreBug(QWidget):
         return p.fontMetrics().elidedText(text, Qt.ElideRight, int(width))
 
 
+class PressureMeter(QWidget):
+    """Live-Druckanzeige als Tauziehen: der Balken wandert Richtung des Teams, das unter Druck steht."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.value = 0.0      # -1 (Orange drueckt) .. +1 (Blau drueckt)
+        self._shown = 0.0     # weich nachgefuehrt
+        self.names = ["Blau", "Orange"]
+        self.setMinimumHeight(62)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+    def set_value(self, v: float, names=None) -> None:
+        self.value = max(-1.0, min(1.0, float(v)))
+        self._shown += (self.value - self._shown) * 0.35
+        if names:
+            self.names = list(names)
+        self.update()
+
+    def reset(self) -> None:
+        self.value = self._shown = 0.0
+        self.update()
+
+    def paintEvent(self, _):
+        from .analysis import PRESSURE_THRESHOLD
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+        v = self._shown
+        # Beschriftung
+        if v >= PRESSURE_THRESHOLD:
+            text, col = f"{self.names[0]} macht Druck – {self.names[1]} unter Druck", QColor(P.TEAM[0])
+        elif v <= -PRESSURE_THRESHOLD:
+            text, col = f"{self.names[1]} macht Druck – {self.names[0]} unter Druck", QColor(P.TEAM[1])
+        else:
+            text, col = "Ausgeglichen", QColor(P.TEXT_2)
+        p.setFont(display_font(10, True, False))
+        p.setPen(QColor(P.MUTED))
+        p.drawText(QRectF(0, 0, w, 20), Qt.AlignLeft | Qt.AlignVCenter, "DRUCK")
+        p.setPen(col)
+        p.drawText(QRectF(0, 0, w, 20), Qt.AlignHCenter | Qt.AlignVCenter, text)
+        # Schiene
+        top, bh = 26.0, 16.0
+        sk = 6.0
+        rail = _poly((sk, top), (w, top), (w - sk, top + bh), (0, top + bh))
+        p.setPen(QPen(QColor(P.LINE), 1))
+        p.setBrush(QColor("#0a1020"))
+        p.drawPolygon(rail)
+        cx = w / 2
+        # Schwellen-Markierungen
+        p.setPen(QPen(QColor(P.MUTED), 1, Qt.DashLine))
+        for s in (-PRESSURE_THRESHOLD, PRESSURE_THRESHOLD):
+            x = cx + s * (w / 2 - sk)
+            p.drawLine(QPointF(x, top + 2), QPointF(x, top + bh - 2))
+        # Fuellung: Blau drueckt -> Balken waechst nach rechts (Richtung Orange-Tor) und umgekehrt
+        x = cx + v * (w / 2 - sk)
+        team = 0 if v >= 0 else 1
+        g = QLinearGradient(cx, 0, x if abs(x - cx) > 1 else cx + 1, 0)
+        c1 = QColor(P.TEAM[team])
+        c1.setAlpha(60)
+        g.setColorAt(0, c1)
+        g.setColorAt(1, QColor(P.TEAM[team]))
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(g))
+        l, r = min(cx, x), max(cx, x)
+        if r - l > 0.5:
+            p.drawPolygon(_poly((l + sk * 0.5, top + 1), (r + sk * 0.5, top + 1),
+                                (r - sk * 0.5, top + bh - 1), (l - sk * 0.5, top + bh - 1)))
+        # Mitte + Zeiger
+        p.setPen(QPen(QColor(P.TEXT_2), 1.2))
+        p.drawLine(QPointF(cx, top - 3), QPointF(cx, top + bh + 3))
+        p.setPen(QPen(QColor("white"), 2.2))
+        p.drawLine(QPointF(x, top - 4), QPointF(x, top + bh + 4))
+        # Teamnamen an den Enden
+        p.setFont(display_font(8.5, True, False))
+        p.setPen(QColor(P.TEAM[0]))
+        p.drawText(QRectF(0, top + bh + 2, w / 2, 14), Qt.AlignLeft | Qt.AlignTop, "◀ " + self.names[0] + "-Tor")
+        p.setPen(QColor(P.TEAM[1]))
+        p.drawText(QRectF(w / 2, top + bh + 2, w / 2, 14), Qt.AlignRight | Qt.AlignTop, self.names[1] + "-Tor ▶")
+        p.end()
+
+
 class StatTile(QFrame):
     """Kennzahl-Kachel mit abgeschraegter Ecke und Farbkante – wie die Spielfeldecken."""
 

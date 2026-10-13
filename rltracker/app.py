@@ -25,7 +25,7 @@ from . import ini_setup, plots as P, replay as R, simulator, storage, updates  #
 from .match_view import MatchView, feed_name  # noqa: E402
 from .recorder import MatchRecorder  # noqa: E402
 from .statsapi import StatsApiClient  # noqa: E402
-from .widgets import STYLE, Canvas, ScoreBug, app_icon, display_font, fill_table, make_table  # noqa: E402
+from .widgets import STYLE, Canvas, PressureMeter, ScoreBug, app_icon, display_font, fill_table, make_table  # noqa: E402
 
 from . import APP_NAME, EPIC_DISCLAIMER, PUBLISHER, __version__  # noqa: E402
 
@@ -181,9 +181,12 @@ class LiveView(QWidget):
         lay.setContentsMargins(22, 18, 22, 16)
         lay.setSpacing(14)
 
+        self.car_kmh = A.UnitGuess(A.MAX_CAR_KMH)
         self.bug = ScoreBug()
         self.bug.set_state(sub="Warte auf ein Match – starte Rocket League und geh ins Freeplay oder in ein Match")
         lay.addWidget(self.bug)
+        self.pressure = PressureMeter()
+        lay.addWidget(self.pressure)
 
         split = QSplitter(Qt.Vertical)
         split.setHandleWidth(10)
@@ -263,12 +266,17 @@ class LiveView(QWidget):
             rows.append([p.get("Name", "?"), p.get("Score", 0), p.get("Goals", 0), p.get("Assists", 0),
                          p.get("Saves", 0), p.get("Shots", 0), p.get("Touches", 0), p.get("Demos", 0),
                          p["Boost"] if "Boost" in p else ("", "–"),
-                         round(A.kmh(p["Speed"])) if "Speed" in p else ("", "–"), ", ".join(status)])
+                         round(self.car_kmh.kmh(p["Speed"])) if "Speed" in p else ("", "–"), ", ".join(status)])
             colors.append(P.TEAM.get(p.get("TeamNum", 0), P.TEXT))
         fill_table(self.table, rows, colors)
+        m = recorder.match
+        if m is not None and not game.get("bReplay"):
+            self.pressure.set_value(A.pressure_now(m, recorder.game_time())[2], names)
 
     def reset(self) -> None:
         self.feed.clear()
+        self.pressure.reset()
+        self.car_kmh = A.UnitGuess(A.MAX_CAR_KMH)
         self.bug.set_state(scores=[0, 0], clock="5:00", overtime=False, sub="", winner=None)
 
 
@@ -889,6 +897,7 @@ class MainWindow(QMainWindow):
         self.last_state: dict | None = None
         self._live_dirty = False
         self._field_dirty = False
+        self._ball_kmh = A.UnitGuess(A.MAX_BALL_KMH)
         self._demo_stop: threading.Event | None = None
         self._replay_watch_until = 0.0
         self._replay_since = 0.0
@@ -1174,6 +1183,7 @@ class MainWindow(QMainWindow):
         for sig, payload in self.recorder.handle(msg):
             if sig == "match_started":
                 self.live.reset()
+                self._ball_kmh = A.UnitGuess(A.MAX_BALL_KMH)
                 self.live.add_feed("Neues Match gestartet", P.TEXT)
                 self._field_dirty = True
             elif sig == "match_ended":
@@ -1209,9 +1219,10 @@ class MainWindow(QMainWindow):
             self.live.add_feed(f"{clock}  {d.get('PlayerName', '?')} hat das Spiel verlassen", P.MUTED)
         elif ev == "BallHit":
             b = d.get("Ball") or {}
-            if b.get("PostHitSpeed", 0) > 2800:  # nur harte Schuesse erwaehnen
+            v = self._ball_kmh.kmh(b.get("PostHitSpeed", 0))
+            if v > 100:  # nur harte Schuesse erwaehnen
                 p = (d.get("Players") or [{}])[0]
-                self.live.add_feed(f"{clock}  Hammer von {nm(p)}: {A.kmh(b['PostHitSpeed']):.0f} km/h", col(p))
+                self.live.add_feed(f"{clock}  Hammer von {nm(p)}: {v:.0f} km/h", col(p))
 
     def _refresh_live(self):
         if self._live_dirty and self.last_state and self.tabs.currentWidget() is self.live:
@@ -1231,6 +1242,7 @@ class MainWindow(QMainWindow):
 
     # ---------------------------------------------------------------- Match-Ende
     def _match_finished(self, match: dict):
+        A.fix_units(match)  # Tempo-Werte einheitlich in uu/s (Spiel sendet km/h, Demo uu/s)
         name = self.settings.get("player_name", "")
         lk = A.local_player_key(match, name)
         if lk:
